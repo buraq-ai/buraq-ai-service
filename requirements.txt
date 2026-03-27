@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+langchain
+langchain-community
+chromadb
+python-jose[cryptography]
+python-dotenv
+pydantic-settings
+pytest
+httpx
