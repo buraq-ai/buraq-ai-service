@@ -1,5 +1,15 @@
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+# NEW: Import the document router
+from routers.document_router import router as document_router
+
+# Configure logging for the entire application
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 
 app = FastAPI(
     title="Buraq-AI Service",
@@ -15,6 +25,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# NEW: Register the document processing router
+app.include_router(document_router)
 
 @app.get("/health")
 async def health():
