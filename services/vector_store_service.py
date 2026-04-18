@@ -138,7 +138,43 @@ class VectorStoreService:
             return len(results.get("ids", [])) > 0
         except Exception:
             return False
+ 
 
+    def delete_document_chunks(self, document_id: int) -> int:
+        """
+        Delete all ChromaDB chunks associated with a given document ID.
+
+        Args:
+            document_id: The database ID of the document whose chunks should be removed
+
+        Returns:
+            Number of chunks deleted
+        """
+        try:
+            collection = self.get_chroma_collection()
+
+            # First, count how many chunks exist for this document
+            existing = collection.get(
+                where={"document_id": document_id}
+            )
+            chunk_count = len(existing.get("ids", []))
+
+            if chunk_count == 0:
+                # Not an error — document may never have been indexed
+                print(f"[WARN] No chunks found in ChromaDB for document_id={document_id}")
+                return 0
+
+            # Delete all chunks matching this document_id
+            collection.delete(
+                where={"document_id": document_id}
+            )
+
+            print(f"[INFO] Deleted {chunk_count} chunks for document_id={document_id}")
+            return chunk_count
+
+        except Exception as e:
+            print(f"[ERROR] Failed to delete chunks for document_id={document_id}: {e}")
+            raise
 
 # Create a singleton instance for use throughout the application
 vector_store_service = VectorStoreService()

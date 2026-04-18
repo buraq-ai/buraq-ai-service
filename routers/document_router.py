@@ -6,6 +6,13 @@ from services.document_service import document_service
 from services.vector_store_service import vector_store_service
 from services.callback_service import callback_service
 
+from pydantic import BaseModel
+
+class DeleteDocumentResponse(BaseModel):
+    document_id: int
+    chunks_deleted: int
+    message: str
+
 # Set up logger for this module
 logger = logging.getLogger(__name__)
 
@@ -35,6 +42,7 @@ router = APIRouter(
     """
 )
 def process_document(request: ProcessDocumentRequest) -> ProcessDocumentResponse:
+
     """
     Process a document for RAG indexing.
     
@@ -122,6 +130,58 @@ def process_document(request: ProcessDocumentRequest) -> ProcessDocumentResponse
         # Notify Spring Boot of failure
         callback_service.update_document_status(document_id, "FAILED")
         
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_msg
+        )
+    
+
+@router.delete(
+    "/{document_id}",
+    response_model=DeleteDocumentResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Delete document chunks from ChromaDB",
+    description="""
+    Internal endpoint called by Spring Boot when a document is deleted or replaced.
+    
+    Removes all ChromaDB chunks associated with the given document_id.
+    Returns HTTP 200 even if no chunks were found — deletion of a
+    non-existent document is not considered an error.
+    """
+)
+def delete_document_chunks(document_id: int) -> DeleteDocumentResponse:
+    """
+    Delete all ChromaDB chunks for a given document ID.
+
+    Args:
+        document_id: The PostgreSQL ID of the document to remove from ChromaDB
+
+    Returns:
+        DeleteDocumentResponse with document_id, chunks_deleted, and message
+    """
+    logger.info(f"Received request to delete chunks for document_id={document_id}")
+
+    try:
+        chunks_deleted = vector_store_service.delete_document_chunks(document_id)
+
+        if chunks_deleted == 0:
+            logger.warning(f"No chunks found in ChromaDB for document_id={document_id}")
+            return DeleteDocumentResponse(
+                document_id=document_id,
+                chunks_deleted=0,
+                message="No chunks found for this document — nothing to delete"
+            )
+
+        logger.info(f"Successfully deleted {chunks_deleted} chunks for document_id={document_id}")
+        return DeleteDocumentResponse(
+            document_id=document_id,
+            chunks_deleted=chunks_deleted,
+            message="Document chunks removed successfully"
+        )
+
+    except Exception as e:
+        error_msg = f"Failed to delete chunks for document_id={document_id}: {str(e)}"
+        logger.exception(error_msg)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=error_msg
