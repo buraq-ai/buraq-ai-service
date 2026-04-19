@@ -1,6 +1,7 @@
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from routers.query_router import router as query_router
 
 # NEW: Import the document router
 from routers.document_router import router as document_router
@@ -28,6 +29,7 @@ app.add_middleware(
 
 # NEW: Register the document processing router
 app.include_router(document_router)
+app.include_router(query_router)
 
 @app.get("/health")
 async def health():
