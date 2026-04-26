@@ -31,7 +31,8 @@ ANSWER:
 )
 
 # Cosine distance threshold — above this means "not relevant enough"
-SIMILARITY_THRESHOLD = 0.8
+# Lowered from 0.8 to 0.6 for higher citation precision (BURAQ-26)
+SIMILARITY_THRESHOLD = 0.65
 
 
 class RAGService:
@@ -52,19 +53,33 @@ class RAGService:
             context_parts.append(f"[Source: {filename}, Page: {page}]\n{doc}")
         return "\n\n".join(context_parts)
 
-    def _build_source_chunks(self, documents: List[str], metadatas: List[dict]) -> List[SourceChunk]:
+    def _build_source_chunks(
+        self,
+        documents: List[str],
+        metadatas: List[dict],
+        distances: List[float]
+    ) -> List[SourceChunk]:
         """
         Convert raw ChromaDB results into SourceChunk Pydantic models.
+        Only includes chunks whose similarity distance is below SIMILARITY_THRESHOLD
+        (i.e. chunks that were actually relevant to the answer).
+        Results are sorted by page number ascending so citations appear in document order.
         """
         sources = []
-        for doc, meta in zip(documents, metadatas):
-            sources.append(SourceChunk(
-                document_id=int(meta.get("document_id", 0)),
-                filename=meta.get("filename", "unknown"),
-                chunk_index=int(meta.get("chunk_index", 0)),
-                page_number=int(meta.get("page_number", 0)),
-                excerpt=doc[:200]  # First 200 characters only
-            ))
+        for doc, meta, distance in zip(documents, metadatas, distances):
+            # Only include high-relevance chunks
+            if distance <= SIMILARITY_THRESHOLD:
+                sources.append(SourceChunk(
+                    document_id=int(meta.get("document_id", 0)),
+                    filename=meta.get("filename", "unknown"),
+                    chunk_index=int(meta.get("chunk_index", 0)),
+                    page_number=int(meta.get("page_number", 0)),
+                    # Clean extra whitespace from excerpt before trimming to 200 chars
+                    excerpt=" ".join(doc.split())[:200]
+                ))
+
+        # Sort by page number so citations appear in document order
+        sources.sort(key=lambda s: s.page_number)
         return sources
 
     def _calculate_confidence(self, distances: List[float]) -> float:
@@ -87,7 +102,8 @@ class RAGService:
             language: Language code ("en", "fr", "ar")
 
         Returns:
-            QueryResponse with answer, sources, and confidence score
+            QueryResponse with answer, sources, confidence score,
+            language_detected, and should_create_ticket
         """
         logger.info(f"RAG query received | language={language} | question={question[:80]}")
 
@@ -106,7 +122,9 @@ class RAGService:
                 answer="An error occurred while searching the knowledge base.",
                 sources=[],
                 has_answer=False,
-                confidence_score=0.0
+                confidence_score=0.0,
+                language_detected=language,
+                should_create_ticket=True
             )
 
         # Unpack results (ChromaDB returns lists of lists — one per query)
@@ -119,15 +137,18 @@ class RAGService:
             logger.info(f"No relevant chunks found (best distance={distances[0] if distances else 'N/A'})")
             return QueryResponse(
                 question=question,
-                answer="I could not find any relevant information in the available documents.",
+                answer="I could not find an answer to your question in the available documents.",
                 sources=[],
                 has_answer=False,
-                confidence_score=0.0
+                confidence_score=0.0,
+                language_detected=language,
+                should_create_ticket=True
             )
 
         # ── STEP 3: AUGMENT ────────────────────────────────────────────────────
         context_string = self._build_context_string(documents, metadatas)
-        source_chunks = self._build_source_chunks(documents, metadatas)
+        # Pass distances so _build_source_chunks can filter by relevance threshold
+        source_chunks = self._build_source_chunks(documents, metadatas, distances)
         confidence = self._calculate_confidence(distances)
 
         # ── STEP 4: GENERATE ───────────────────────────────────────────────────
@@ -148,7 +169,9 @@ class RAGService:
                 answer="The AI model is currently unavailable. Please try again later.",
                 sources=source_chunks,
                 has_answer=False,
-                confidence_score=confidence
+                confidence_score=confidence,
+                language_detected=language,
+                should_create_ticket=True
             )
 
         return QueryResponse(
@@ -156,7 +179,9 @@ class RAGService:
             answer=answer,
             sources=source_chunks,
             has_answer=True,
-            confidence_score=confidence
+            confidence_score=confidence,
+            language_detected=language,
+            should_create_ticket=False
         )
 
 

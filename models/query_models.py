@@ -21,3 +21,5 @@ class QueryResponse(BaseModel):
     sources: List[SourceChunk]
     has_answer: bool
     confidence_score: float
+    language_detected: str = "en"   # Language of the generated answer
+    should_create_ticket: bool = False  # True when no answer found — triggers ticket creation in BURAQ-27
