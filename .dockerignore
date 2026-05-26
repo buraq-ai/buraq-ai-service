@@ -1,0 +1,33 @@
+# Git
+.git
+.gitignore
+
+# Python virtual environment (we'll install fresh in Docker)
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Environment files (contain secrets!)
+.env
+.env.*
+
+# Tests
+tests/
+test_llm.py
+
+# Documentation
+README.md
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# ChromaDB local storage (runtime data)
+chroma_db/
+
+# IDE
+.vscode/
+.idea/
+*.iml
